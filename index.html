@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Lava Blakus</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      background: #0a0000;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      font-family: monospace;
+    }
+    h1 {
+      color: #ff5500;
+      font-size: 2rem;
+      letter-spacing: 0.4em;
+      margin-bottom: 12px;
+      text-shadow: 0 0 24px rgba(255,80,0,0.55);
+    }
+    canvas {
+      border: 2px solid #3a0a00;
+      display: block;
+    }
+    p {
+      color: #4a1a1a;
+      margin-top: 10px;
+      font-size: 0.75rem;
+      letter-spacing: 0.15em;
+    }
+  </style>
+</head>
+<body>
+  <h1>LAVA BLAKUS</h1>
+  <canvas id="game"></canvas>
+  <p>ARROWS or WASD &nbsp;·&nbsp; SPACE / UP / W to jump &nbsp;·&nbsp; E at door &nbsp;·&nbsp; R respawn (lava resets) &nbsp;·&nbsp; P pause &nbsp;·&nbsp; M menu</p>
+
+  <script src="src/input.js"></script>
+  <script src="src/platform.js"></script>
+  <script src="src/spike.js"></script>
+  <script src="src/door.js"></script>
+  <script src="src/camera.js"></script>
+  <script src="src/lava.js"></script>
+  <script src="src/player.js"></script>
+  <script src="src/level.js"></script>
+  <script src="src/main.js"></script>
+</body>
+</html>
