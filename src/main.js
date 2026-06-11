@@ -5,16 +5,40 @@ canvas.width  = 800;
 canvas.height = 600;
 ctx.imageSmoothingEnabled = false;
 
+const VPORT_W = canvas.width / 2; // 400 — each player's viewport in 2P mode
+
 const input = new Input();
 
-let currentLevel = 0;
-let respawns     = 0;
-let gameState    = 'menu'; // 'menu' | 'playing' | 'paused' | 'won'
-let pauseStartMs = 0;
+let currentLevel  = 0;
+let deaths        = [0, 0]; // per-player; deaths[1] unused in 1P mode
+let gameState     = 'menu'; // 'menu' | 'playing' | 'paused' | 'won'
+let twoPlayerMode = false;
+let pauseStartMs  = 0;
 
 let levelStartMs = 0;
 let levelTimes   = [];
 let cheated      = false;
+
+// 1P: full merged controls (arrows + WASD)
+const P1_CONTROLS_1P = {
+  left:  ['ArrowLeft', 'KeyA'],
+  right: ['ArrowRight', 'KeyD'],
+  up:    ['ArrowUp', 'KeyW', 'Space'],
+  down:  ['ArrowDown', 'KeyS'],
+};
+// 2P: P1 = WASD + shift, P2 = arrows + space
+const P1_CONTROLS_2P = {
+  left:  ['KeyA'],
+  right: ['KeyD'],
+  up:    ['KeyW', 'ShiftLeft'],
+  down:  ['KeyS'],
+};
+const P2_CONTROLS = {
+  left:  ['ArrowLeft'],
+  right: ['ArrowRight'],
+  up:    ['ArrowUp', 'Space'],
+  down:  ['ArrowDown'],
+};
 
 function formatTime(ms) {
   const totalSec = ms / 1000;
@@ -23,33 +47,47 @@ function formatTime(ms) {
   return `${mins}:${secs}`;
 }
 
-let level, player, camera, lava;
+let level, players, cameras, lava;
 
-function snapCamera() {
-  camera.x = Math.max(0, Math.min(player.x + player.width  / 2 - canvas.width  / 2, level.width  - canvas.width));
-  camera.y = Math.max(0, Math.min(player.y + player.height / 2 - canvas.height / 2, level.height - canvas.height));
-}
-
-function doRespawn() {
-  respawns++;
-  player.respawn(level.spawnX, level.spawnY);
-  lava.reset();
-  snapCamera();
+function snapCameras() {
+  const vw = twoPlayerMode ? VPORT_W : canvas.width;
+  for (let i = 0; i < players.length; i++) {
+    cameras[i].x = Math.max(0, Math.min(
+      players[i].x + players[i].width  / 2 - vw / 2,
+      level.width - vw
+    ));
+    cameras[i].y = Math.max(0, Math.min(
+      players[i].y + players[i].height / 2 - canvas.height / 2,
+      level.height - canvas.height
+    ));
+  }
 }
 
 function loadLevel(n) {
-  const wasInvincible = player ? player.invincible : false;
+  const wasInvincible = players ? players[0].invincible : false;
   currentLevel = n;
-  level  = new Level(n);
-  player = new Player(level.spawnX, level.spawnY);
-  player.invincible = wasInvincible;
-  camera = new Camera(canvas.width, canvas.height, level.width, level.height);
-  lava   = new Lava(level.height);
-  snapCamera();
+  level = new Level(n);
+  lava  = new Lava(level.height);
+
+  if (twoPlayerMode) {
+    players = [
+      new Player(level.spawnX,      level.spawnY, P1_CONTROLS_2P),
+      new Player(level.spawnX + 40, level.spawnY, P2_CONTROLS, '#1a88cc'),
+    ];
+    cameras = [
+      new Camera(VPORT_W,       canvas.height, level.width, level.height),
+      new Camera(VPORT_W,       canvas.height, level.width, level.height),
+    ];
+  } else {
+    players = [new Player(level.spawnX, level.spawnY, P1_CONTROLS_1P)];
+    cameras = [new Camera(canvas.width, canvas.height, level.width, level.height)];
+  }
+  players[0].invincible = wasInvincible;
+  snapCameras();
 }
 
 function startGame() {
-  respawns     = 0;
+  deaths       = [0, 0];
   levelTimes   = [];
   cheated      = false;
   levelStartMs = performance.now();
@@ -67,7 +105,6 @@ function drawMenuScreen(timestamp) {
   ctx.fillStyle = '#0d0000';
   ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-  // Lava glow from bottom
   const g = ctx.createLinearGradient(0, canvas.height * 0.6, 0, canvas.height);
   g.addColorStop(0, 'rgba(255,60,0,0)');
   g.addColorStop(1, 'rgba(255,60,0,0.18)');
@@ -94,39 +131,39 @@ function drawMenuScreen(timestamp) {
   if (Math.floor(timestamp / 500) % 2 === 0) {
     ctx.fillStyle = '#ffffff';
     ctx.shadowBlur = 0;
-    ctx.font = '16px monospace';
-    ctx.fillText('press SPACE to start', canvas.width / 2, canvas.height / 2 + 65);
+    ctx.font = '15px monospace';
+    ctx.fillText('SPACE — 1 Player        ENTER — 2 Players', canvas.width / 2, canvas.height / 2 + 68);
   }
 
   ctx.fillStyle = '#3a1a1a';
   ctx.shadowBlur = 0;
   ctx.font = '11px monospace';
-  ctx.fillText('arrows / WASD to move  ·  space / up / W to jump',
+  ctx.fillText('1P: WASD to move · shift to jump    2P: arrows to move · space to jump',
                canvas.width / 2, canvas.height - 60);
-  ctx.fillText('E at door to advance  ·  R to respawn  ·  lava resets on death',
+  ctx.fillText('E at door to advance · 1P: R to respawn · 2P: no respawn — survive!',
                canvas.width / 2, canvas.height - 42);
-  ctx.fillText('P to pause  ·  M for menu',
+  ctx.fillText('P to pause · M for menu',
                canvas.width / 2, canvas.height - 24);
 
   ctx.restore();
 }
 
 function returnToMenu() {
-  respawns   = 0;
+  deaths     = [0, 0];
   levelTimes = [];
   cheated    = false;
-  if (player) player.invincible = false;
-  gameState = 'menu';
+  if (players) players.forEach(p => { p.invincible = false; p.dead = false; });
+  gameState  = 'menu';
 }
 
-function drawBackground() {
+function drawBackground(cam) {
   ctx.fillStyle = 'rgba(255,80,0,0.04)';
   const dots = [[40,30],[120,80],[200,50],[310,110],[70,170],[260,200],[350,60],[150,240],[380,180],[90,250]];
   const tileW = 400, tileH = 300;
-  const sx = Math.floor(camera.x / tileW);
-  const sy = Math.floor(camera.y / tileH);
-  for (let tx = sx - 1; tx <= sx + Math.ceil(canvas.width  / tileW) + 1; tx++) {
-    for (let ty = sy - 1; ty <= sy + Math.ceil(canvas.height / tileH) + 1; ty++) {
+  const sx = Math.floor(cam.x / tileW);
+  const sy = Math.floor(cam.y / tileH);
+  for (let tx = sx - 1; tx <= sx + Math.ceil(cam.width / tileW) + 1; tx++) {
+    for (let ty = sy - 1; ty <= sy + Math.ceil(cam.height / tileH) + 1; ty++) {
       for (const [dx, dy] of dots) ctx.fillRect(tx * tileW + dx, ty * tileH + dy, 2, 2);
     }
   }
@@ -134,51 +171,160 @@ function drawBackground() {
 
 function drawHUD() {
   const t = formatTime(performance.now() - levelStartMs);
-  ctx.font = 'bold 14px monospace';
-  ctx.fillStyle = 'rgba(0,0,0,0.5)';
-  ctx.fillRect(10, 10, 380, 28);
-  ctx.fillStyle = '#ff7733';
-  ctx.fillText(`LVL ${currentLevel + 1}/${Level.count}   TIME ${t}   DEATHS ${respawns}`, 18, 29);
+  ctx.font = 'bold 13px monospace';
 
-  if (player.invincible) {
-    ctx.fillStyle = 'rgba(255,215,0,0.25)';
-    ctx.fillRect(canvas.width - 160, 10, 150, 28);
-    ctx.fillStyle = '#ffd700';
-    ctx.font = 'bold 13px monospace';
-    ctx.fillText('★ INVINCIBLE ★', canvas.width - 150, 29);
+  if (twoPlayerMode) {
+    // Left viewport — P1 info
+    ctx.fillStyle = 'rgba(0,0,0,0.5)';
+    ctx.fillRect(5, 5, 240, 22);
+    ctx.fillStyle = '#ff7733';
+    ctx.fillText(`LVL ${currentLevel + 1}/${Level.count}  ${t}  P1:${deaths[0]}`, 10, 21);
+
+    // Right viewport — P2 info
+    ctx.fillStyle = 'rgba(0,0,0,0.5)';
+    ctx.fillRect(VPORT_W + 5, 5, 80, 22);
+    ctx.fillStyle = '#33aaff';
+    ctx.fillText(`P2:${deaths[1]}`, VPORT_W + 10, 21);
+
+    // Per-player lava proximity warning
+    for (let i = 0; i < 2; i++) {
+      if (players[i].dead) continue;
+      const lavaDist = lava.y - (players[i].y + players[i].height);
+      if (lavaDist < 350) {
+        const offsetX = i * VPORT_W;
+        const danger = Math.max(0, 1 - lavaDist / 350);
+        const pulse  = 0.5 + 0.5 * Math.sin(performance.now() / 150);
+        ctx.fillStyle = `rgba(255,40,0,${danger * 0.35 * pulse})`;
+        ctx.fillRect(offsetX, canvas.height - 8, VPORT_W, 8);
+        ctx.font = 'bold 12px monospace';
+        ctx.fillStyle = `rgba(255,100,0,${Math.min(1, danger * 1.5)})`;
+        ctx.textAlign = 'right';
+        ctx.fillText(`LAVA ↑${Math.max(0, Math.floor(lavaDist))}px`, offsetX + VPORT_W - 6, canvas.height - 12);
+        ctx.textAlign = 'left';
+        ctx.font = 'bold 13px monospace';
+      }
+    }
+
+    // All dead: show advance prompt centered
+    const allDead = players.every(p => p.dead);
+    if (allDead) {
+      ctx.fillStyle = 'rgba(0,0,0,0.7)';
+      ctx.fillRect(canvas.width / 2 - 210, canvas.height / 2 - 18, 420, 28);
+      ctx.fillStyle = '#ffaa00';
+      ctx.font = 'bold 14px monospace';
+      ctx.textAlign = 'center';
+      ctx.fillText('ALL DEAD · PRESS E TO ADVANCE', canvas.width / 2, canvas.height / 2 + 5);
+      ctx.textAlign = 'left';
+    } else {
+      // Co-op door status
+      const p1Alive = !players[0].dead;
+      const p2Alive = !players[1].dead;
+      const p1At = p1Alive && level.door.isNear(players[0]);
+      const p2At = p2Alive && level.door.isNear(players[1]);
+      const bothAlive = p1Alive && p2Alive;
+
+      if (bothAlive && (p1At || p2At) && !(p1At && p2At)) {
+        const msg = p1At ? 'P1 at door · waiting for P2' : 'P2 at door · waiting for P1';
+        ctx.fillStyle = 'rgba(0,0,0,0.65)';
+        ctx.fillRect(canvas.width / 2 - 175, canvas.height - 26, 350, 20);
+        ctx.fillStyle = '#ffdd44';
+        ctx.textAlign = 'center';
+        ctx.fillText(msg, canvas.width / 2, canvas.height - 11);
+        ctx.textAlign = 'left';
+      } else if (p1At && p2At) {
+        ctx.fillStyle = 'rgba(0,0,0,0.65)';
+        ctx.fillRect(canvas.width / 2 - 175, canvas.height - 26, 350, 20);
+        ctx.fillStyle = '#00ff88';
+        ctx.textAlign = 'center';
+        ctx.fillText('both at door — press E!', canvas.width / 2, canvas.height - 11);
+        ctx.textAlign = 'left';
+      }
+    }
+
+  } else {
+    // Original 1P HUD
+    ctx.font = 'bold 14px monospace';
+    ctx.fillStyle = 'rgba(0,0,0,0.5)';
+    ctx.fillRect(10, 10, 380, 28);
+    ctx.fillStyle = '#ff7733';
+    ctx.fillText(`LVL ${currentLevel + 1}/${Level.count}   TIME ${t}   DEATHS ${deaths[0]}`, 18, 29);
+
+    if (players[0].invincible) {
+      ctx.fillStyle = 'rgba(255,215,0,0.25)';
+      ctx.fillRect(canvas.width - 160, 10, 150, 28);
+      ctx.fillStyle = '#ffd700';
+      ctx.font = 'bold 13px monospace';
+      ctx.fillText('★ INVINCIBLE ★', canvas.width - 150, 29);
+    }
+
+    const lavaDist = lava.y - (players[0].y + players[0].height);
+    if (lavaDist < 350) {
+      const danger = Math.max(0, 1 - lavaDist / 350);
+      const pulse  = 0.5 + 0.5 * Math.sin(performance.now() / 150);
+      ctx.fillStyle = `rgba(255,40,0,${danger * 0.35 * pulse})`;
+      ctx.fillRect(0, canvas.height - 8, canvas.width, 8);
+      ctx.font = 'bold 13px monospace';
+      ctx.fillStyle = `rgba(255,100,0,${Math.min(1, danger * 1.5)})`;
+      ctx.textAlign = 'right';
+      ctx.fillText(`LAVA ↑${Math.max(0, Math.floor(lavaDist))}px`, canvas.width - 12, canvas.height - 12);
+      ctx.textAlign = 'left';
+    }
   }
+}
 
-  // Lava proximity warning — show a danger bar at bottom of screen
-  const lavaDist = lava.y - (player.y + player.height);
-  if (lavaDist < 350) {
-    const danger = Math.max(0, 1 - lavaDist / 350);
-    const pulse  = 0.5 + 0.5 * Math.sin(performance.now() / 150);
-    const alpha  = danger * 0.35 * pulse;
-    ctx.fillStyle = `rgba(255,40,0,${alpha})`;
-    ctx.fillRect(0, canvas.height - 8, canvas.width, 8);
+function drawViewport(i, offsetX) {
+  const cam = cameras[i];
+  const vw  = twoPlayerMode ? VPORT_W : canvas.width;
 
-    ctx.font = 'bold 13px monospace';
-    ctx.fillStyle = `rgba(255,100,0,${Math.min(1, danger * 1.5)})`;
-    ctx.textAlign = 'right';
-    ctx.fillText(`LAVA ↑${Math.max(0, Math.floor(lavaDist))}px`, canvas.width - 12, canvas.height - 12);
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(offsetX, 0, vw, canvas.height);
+  ctx.clip();
+
+  ctx.fillStyle = level.bgColor;
+  ctx.fillRect(offsetX, 0, vw, canvas.height);
+
+  ctx.translate(offsetX - Math.round(cam.x), -Math.round(cam.y));
+
+  drawBackground(cam);
+  for (const p of level.platforms) p.draw(ctx);
+  for (const s of level.spikes)    s.draw(ctx);
+
+  // Door prompt shows only when all alive players are at the door
+  const alivePlayers = players.filter(p => !p.dead);
+  const showPrompt = alivePlayers.length > 0 && alivePlayers.every(p => level.door.isNear(p));
+  level.door.draw(ctx, showPrompt);
+
+  lava.draw(ctx, level.width);
+
+  for (const p of players) p.draw(ctx);
+
+  ctx.restore();
+
+  // Dead overlay — drawn in screen space after world
+  if (twoPlayerMode && players[i].dead) {
+    ctx.fillStyle = 'rgba(0,0,0,0.55)';
+    ctx.fillRect(offsetX, 0, vw, canvas.height);
+    ctx.fillStyle = '#cc3333';
+    ctx.font = 'bold 26px monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText('DEAD', offsetX + vw / 2, canvas.height / 2 - 12);
+    ctx.fillStyle = '#776666';
+    ctx.font = '12px monospace';
+    ctx.fillText('waiting for next level...', offsetX + vw / 2, canvas.height / 2 + 12);
     ctx.textAlign = 'left';
   }
 }
 
 function drawGameScene() {
-  ctx.fillStyle = level.bgColor;
-  ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-  ctx.save();
-  camera.apply(ctx);
-  drawBackground();
-  for (const p of level.platforms) p.draw(ctx);
-  for (const s of level.spikes)    s.draw(ctx);
-  level.door.draw(ctx, level.door.isNear(player));
-  lava.draw(ctx, level.width);
-  player.draw(ctx);
-  ctx.restore();
-
+  if (twoPlayerMode) {
+    drawViewport(0, 0);
+    drawViewport(1, VPORT_W);
+    ctx.fillStyle = '#000000';
+    ctx.fillRect(VPORT_W - 1, 0, 2, canvas.height);
+  } else {
+    drawViewport(0, 0);
+  }
   drawHUD();
 }
 
@@ -215,9 +361,15 @@ function drawWinScreen(timestamp) {
   ctx.fillText('SURVIVED!', canvas.width / 2, 70);
   ctx.shadowBlur = 0;
 
+  const totalDeaths = deaths[0] + deaths[1];
   ctx.fillStyle = '#7a3a3a';
   ctx.font = '13px monospace';
-  ctx.fillText(`deaths: ${respawns}`, canvas.width / 2, 95);
+  if (twoPlayerMode) {
+    ctx.fillText(`P1 deaths: ${deaths[0]}  ·  P2 deaths: ${deaths[1]}  ·  total: ${totalDeaths}`,
+                 canvas.width / 2, 95);
+  } else {
+    ctx.fillText(`deaths: ${deaths[0]}`, canvas.width / 2, 95);
+  }
 
   if (cheated) {
     ctx.fillStyle = '#ff4455';
@@ -256,7 +408,7 @@ function drawWinScreen(timestamp) {
     ctx.textAlign = 'right';
     ctx.fillText(formatTime(total), rightX, y);
 
-    if (respawns === 0) {
+    if (totalDeaths === 0) {
       ctx.textAlign = 'center';
       ctx.fillStyle = '#ffd700';
       ctx.font = '14px monospace';
@@ -283,7 +435,8 @@ function gameLoop(timestamp) {
 
   if (gameState === 'menu') {
     drawMenuScreen(timestamp);
-    if (input.justPressed('Space')) startGame();
+    if (input.justPressed('Space')) { twoPlayerMode = false; startGame(); }
+    if (input.justPressed('Enter')) { twoPlayerMode = true;  startGame(); }
     input.clearFrame();
     requestAnimationFrame(gameLoop);
     return;
@@ -327,10 +480,15 @@ function gameLoop(timestamp) {
     return;
   }
 
-  // Secret cheats (invalidate time)
+  // Secret cheats: Tab = P1 (WASD), Enter = P2 (arrows) in 2P / P1 in 1P
+  if (input.justPressed('Tab')) {
+    players[0].invincible = !players[0].invincible;
+    if (players[0].invincible) cheated = true;
+  }
   if (input.justPressed('Enter')) {
-    player.invincible = !player.invincible;
-    if (player.invincible) cheated = true;
+    const target = twoPlayerMode ? players[1] : players[0];
+    target.invincible = !target.invincible;
+    if (target.invincible) cheated = true;
   }
   for (let n = 1; n <= Level.count; n++) {
     if (input.justPressed(`Digit${n}`)) {
@@ -343,31 +501,59 @@ function gameLoop(timestamp) {
 
   for (const p of level.platforms) { if (p.update) p.update(dt); }
 
-  player.update(dt, input, level.platforms);
+  for (const p of players) p.update(dt, input, level.platforms);
 
-  if (player.invincible) {
-    if (player.x < 0) player.x = 0;
-    if (player.x + player.width > level.width) player.x = level.width - player.width;
-  }
-
-  if (input.justPressed('KeyR')) doRespawn();
-
-  // Fall off world
-  if (player.y > level.height && !player.invincible) doRespawn();
-
-  // Spike collision
-  if (!player.invincible) {
-    for (const spike of level.spikes) {
-      if (spike.collides(player)) { doRespawn(); break; }
+  // Boundary clamp for invincible alive players
+  for (const p of players) {
+    if (!p.dead && p.invincible) {
+      if (p.x < 0) p.x = 0;
+      if (p.x + p.width > level.width) p.x = level.width - p.width;
     }
   }
 
-  // Lava rises and kills
-  lava.update(dt, level.lavaSpeed);
-  if (!player.invincible && lava.touches(player)) doRespawn();
+  // 1P manual respawn (R key; resets lava)
+  if (!twoPlayerMode && input.justPressed('KeyR')) {
+    deaths[0]++;
+    players[0].respawn(level.spawnX, level.spawnY);
+    lava.reset();
+    snapCameras();
+  }
 
-  // Door interaction
-  if (level.door.isNear(player) && input.justPressed('KeyE')) {
+  // Death checks — independent per player; no respawn in 2P
+  for (let i = 0; i < players.length; i++) {
+    const p = players[i];
+    if (p.dead || p.invincible) continue;
+
+    let died = p.y > level.height;
+    if (!died) {
+      for (const spike of level.spikes) {
+        if (spike.collides(p)) { died = true; break; }
+      }
+    }
+    if (!died) died = lava.touches(p);
+
+    if (died) {
+      deaths[i]++;
+      if (twoPlayerMode) {
+        p.dead = true;
+      } else {
+        p.respawn(level.spawnX, level.spawnY);
+        lava.reset();
+        snapCameras();
+      }
+    }
+  }
+
+  // Lava rises every frame (shared; never resets mid-level in 2P)
+  lava.update(dt, level.lavaSpeed);
+
+  // Door & level advance
+  // All dead → E advances; else all alive players must be at door
+  const allDead = twoPlayerMode && players.every(p => p.dead);
+  const alivePlayers = players.filter(p => !p.dead);
+  const allAliveAtDoor = alivePlayers.length > 0 && alivePlayers.every(p => level.door.isNear(p));
+
+  if ((allDead || allAliveAtDoor) && input.justPressed('KeyE')) {
     levelTimes.push(performance.now() - levelStartMs);
     levelStartMs = performance.now();
     if (currentLevel + 1 < Level.count) {
@@ -377,7 +563,11 @@ function gameLoop(timestamp) {
     }
   }
 
-  camera.update(player, dt);
+  // Update cameras — only follow alive players; freeze dead players' cameras
+  for (let i = 0; i < cameras.length; i++) {
+    if (!players[i].dead) cameras[i].update(players[i], dt);
+  }
+
   input.clearFrame();
   drawGameScene();
   requestAnimationFrame(gameLoop);

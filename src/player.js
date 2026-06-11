@@ -4,7 +4,7 @@ const MOVE_SPEED   = 260;
 const TERMINAL_VEL = 900;
 
 class Player {
-  constructor(x, y) {
+  constructor(x, y, controls, bodyColor = '#c02030') {
     this.x = x;
     this.y = y;
     this.width   = 28;
@@ -14,12 +14,21 @@ class Player {
     this.onGround    = false;
     this.facingRight = true;
     this.invincible  = false;
+    this.dead        = false;
+    this.bodyColor   = bodyColor;
     this._coyoteFrames   = 0;
     this._jumpHeld       = false;
     this._ridingPlatform = null;
+    this.controls = controls || {
+      left:  ['ArrowLeft', 'KeyA'],
+      right: ['ArrowRight', 'KeyD'],
+      up:    ['ArrowUp', 'KeyW', 'Space'],
+      down:  ['ArrowDown', 'KeyS'],
+    };
   }
 
   update(dt, input, platforms) {
+    if (this.dead) return;
     if (this.invincible) { this._flyUpdate(dt, input); return; }
 
     if (this.onGround && this._ridingPlatform && this._ridingPlatform.vx !== undefined) {
@@ -28,15 +37,15 @@ class Player {
     }
     this._ridingPlatform = null;
 
-    const left  = input.isDown('ArrowLeft')  || input.isDown('KeyA');
-    const right = input.isDown('ArrowRight') || input.isDown('KeyD');
+    const left  = this.controls.left.some(k  => input.isDown(k));
+    const right = this.controls.right.some(k => input.isDown(k));
     if (left)       { this.vx = -MOVE_SPEED; this.facingRight = false; }
     else if (right) { this.vx =  MOVE_SPEED; this.facingRight = true;  }
     else            { this.vx = 0; }
 
-    const canJump    = this.onGround || this._coyoteFrames > 0;
-    const jumpDown   = input.isDown('ArrowUp')    || input.isDown('KeyW') || input.isDown('Space');
-    const jumpPressed = input.justPressed('ArrowUp') || input.justPressed('KeyW') || input.justPressed('Space');
+    const canJump     = this.onGround || this._coyoteFrames > 0;
+    const jumpDown    = this.controls.up.some(k => input.isDown(k));
+    const jumpPressed = this.controls.up.some(k => input.justPressed(k));
 
     if (jumpPressed && canJump) {
       this.vy = JUMP_SPEED;
@@ -75,7 +84,7 @@ class Player {
     for (const p of platforms) {
       if (!this._overlaps(p)) continue;
       if (this.vy >= 0) {
-        if (p.oneWay && this.y >= p.y) continue; // player came from below
+        if (p.oneWay && this.y >= p.y) continue;
         this.y = p.y - this.height;
         this.onGround = true;
         this._ridingPlatform = p;
@@ -89,10 +98,10 @@ class Player {
 
   _flyUpdate(dt, input) {
     const S = 380;
-    const up    = input.isDown('ArrowUp')    || input.isDown('KeyW') || input.isDown('Space');
-    const down  = input.isDown('ArrowDown')  || input.isDown('KeyS');
-    const left  = input.isDown('ArrowLeft')  || input.isDown('KeyA');
-    const right = input.isDown('ArrowRight') || input.isDown('KeyD');
+    const up    = this.controls.up.some(k   => input.isDown(k));
+    const down  = this.controls.down.some(k => input.isDown(k));
+    const left  = this.controls.left.some(k => input.isDown(k));
+    const right = this.controls.right.some(k => input.isDown(k));
     this.vx = 0; this.vy = 0;
     if (right) this.vx += S;  if (left)  this.vx -= S;
     if (up)    this.vy -= S;  if (down)  this.vy += S;
@@ -109,6 +118,7 @@ class Player {
     this.vx = 0;
     this.vy = 0;
     this.onGround = false;
+    this.dead = false;
     this._coyoteFrames   = 0;
     this._ridingPlatform = null;
   }
@@ -121,17 +131,24 @@ class Player {
   }
 
   draw(ctx) {
+    if (this.dead) {
+      ctx.save();
+      ctx.globalAlpha = 0.28;
+    }
+
     if (this.invincible) {
       const pulse = 0.25 + 0.2 * Math.sin(performance.now() / 120);
       ctx.fillStyle = `rgba(255,215,0,${pulse})`;
       ctx.fillRect(this.x - 5, this.y - 5, this.width + 10, this.height + 10);
     }
-    ctx.fillStyle = this.invincible ? '#ffd700' : '#c02030';
+    ctx.fillStyle = this.invincible ? '#ffd700' : this.bodyColor;
     ctx.fillRect(this.x, this.y + 8, this.width, this.height - 8);
     ctx.fillStyle = this.invincible ? '#ffe060' : '#e8c870';
     ctx.fillRect(this.x + 3, this.y, this.width - 6, 10);
     ctx.fillStyle = '#0d0d1a';
     const eyeX = this.facingRight ? this.x + this.width - 9 : this.x + 5;
     ctx.fillRect(eyeX, this.y + 2, 4, 4);
+
+    if (this.dead) ctx.restore();
   }
 }
