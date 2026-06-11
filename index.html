@@ -32,12 +32,72 @@
       font-size: 0.75rem;
       letter-spacing: 0.15em;
     }
+    #name-entry {
+      display: none;
+      position: absolute;
+      top: 0; left: 0; right: 0; bottom: 0;
+      background: rgba(10, 0, 0, 0.93);
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+    }
+    #name-entry .lb-title {
+      color: #ff5500;
+      font-size: 15px;
+      letter-spacing: 0.2em;
+      margin-bottom: 6px;
+    }
+    #name-entry input {
+      background: #1a0000;
+      border: 1px solid #ff5500;
+      color: #fff;
+      padding: 8px 14px;
+      font-size: 14px;
+      font-family: monospace;
+      outline: none;
+      width: 240px;
+      text-align: center;
+    }
+    #input-name-p2 { border-color: #4499ff; color: #4499ff; }
+    #name-entry button {
+      background: #ff5500;
+      color: #0a0000;
+      border: none;
+      padding: 9px 28px;
+      font: bold 13px monospace;
+      cursor: pointer;
+      letter-spacing: 0.15em;
+      margin-top: 4px;
+    }
+    #name-entry button:hover { background: #ff7733; }
+    #btn-skip {
+      color: #5a2a2a;
+      font-size: 11px;
+      cursor: pointer;
+    }
+    #btn-skip:hover { color: #8a4a4a; }
+    #form-2p { display: none; flex-direction: column; align-items: center; gap: 8px; }
   </style>
 </head>
 <body>
   <h1>LAVA BLAKUS</h1>
-  <canvas id="game"></canvas>
-  <p>1P: WASD · shift to jump · R respawn &nbsp;&nbsp;|&nbsp;&nbsp; 2P: ARROWS · space to jump · no respawn (survive!) &nbsp;&nbsp;|&nbsp;&nbsp; E at door · P pause · M menu</p>
+  <div style="position:relative; display:inline-block; line-height:0;">
+    <canvas id="game"></canvas>
+    <div id="name-entry">
+      <div class="lb-title">SAVE YOUR SCORE</div>
+      <div id="form-1p" style="display:flex; flex-direction:column; align-items:center; gap:8px;">
+        <input id="input-name" type="text" placeholder="your name" maxlength="30">
+      </div>
+      <div id="form-2p">
+        <input id="input-name-p1" type="text" placeholder="P1 name" maxlength="30">
+        <input id="input-name-p2" type="text" placeholder="P2 name" maxlength="30">
+      </div>
+      <button id="btn-save">SAVE</button>
+      <div id="btn-skip">skip</div>
+    </div>
+  </div>
+  <p>1P: WASD · shift to jump · R respawn &nbsp;&nbsp;|&nbsp;&nbsp; 2P: ARROWS · space to jump · no respawn (survive!) &nbsp;&nbsp;|&nbsp;&nbsp; E at door · P pause · M menu · L leaderboard</p>
 
   <script src="src/input.js"></script>
   <script src="src/platform.js"></script>
@@ -47,6 +107,7 @@
   <script src="src/lava.js"></script>
   <script src="src/player.js"></script>
   <script src="src/level.js"></script>
+  <script src="src/leaderboard.js"></script>
   <script src="src/main.js"></script>
 </body>
 </html>
