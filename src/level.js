@@ -1,213 +1,160 @@
-// Vertical climb levels. Width=800 matches canvas so no horizontal scroll.
-// Platforms use two zones: Left x=80 w=120 (right-edge 200) and Right x=420 w=120
-// (left-edge 420). Edge-to-edge gap = 220px, well within the 250px jump range.
-// Vertical spacing ≤ 155px, max jump height ≈ 172px.
-// Spawn at bottom (high y), door at top (low y).
-// lavaSpeed: px/s the lava rises. Resets on each death.
+function seededRng(seed) {
+  let s = seed | 0;
+  return () => {
+    s = (Math.imul(s, 1664525) + 1013904223) | 0;
+    return (s >>> 1) / 0x80000000;
+  };
+}
+
+// Each vertical tier gets 2–3 platforms spread across the level width so the
+// player can choose any route up rather than following a single forced path.
+// spikeEvery>0 places a spike on every Nth platform (skipping the first tier).
+// moverCount replaces that many platforms (evenly spaced) with moving platforms.
+function genLevel(seed, floorY, topY, platColor, moverColor, spikeEvery, moverCount) {
+  const rng = seededRng(seed);
+  const MARGIN = 20, H = 18;
+  const raw = [];
+
+  for (let ty = floorY; ty > topY + 90;) {
+    const step = 115 + Math.floor(rng() * 25); // 115–139 px per tier
+    ty -= step;
+    if (ty <= topY + 90) break;
+
+    // 2 platforms most of the time, 3 platforms ~45% of the time
+    const n = rng() < 0.45 ? 3 : 2;
+    const segW = (800 - 2 * MARGIN) / n;
+
+    for (let i = 0; i < n; i++) {
+      const w    = 72  + Math.floor(rng() * 46);                          // 72–118 px wide
+      const segX = MARGIN + i * segW;
+      const x    = Math.floor(segX + rng() * Math.max(1, segW - w - 8)); // random within segment
+      const y    = ty   + Math.floor((rng() - 0.5) * 16);                // ±8 px jitter
+      raw.push({
+        px: Math.max(MARGIN, Math.min(800 - w - MARGIN, x)),
+        py: Math.max(topY + 90, y),
+        w,
+        spikeRight: rng() > 0.5,
+      });
+    }
+  }
+
+  // If the highest generated platform is more than 150px above the top
+  // one-way platform, the player can't make the final jump. Insert a
+  // bridging tier at topY+130 so it's always comfortably in range.
+  const closestToTop = raw.length ? Math.min(...raw.map(r => r.py)) : floorY;
+  if (closestToTop - topY > 150) {
+    const bridgeY = topY + 130;
+    raw.push({ px: 60,  py: bridgeY, w: 110, spikeRight: false });
+    raw.push({ px: 620, py: bridgeY, w: 110, spikeRight: false });
+  }
+
+  raw.sort((a, b) => b.py - a.py); // bottom → top
+
+  // Indices that become movers (evenly distributed through the list)
+  const moverIdxs = new Set();
+  if (moverCount > 0) {
+    const step = Math.floor(raw.length / (moverCount + 1));
+    for (let i = 1; i <= moverCount; i++) moverIdxs.add(i * step);
+  }
+
+  const plats = [], spikes = [], movers = [];
+  let mn = 0;
+
+  for (let i = 0; i < raw.length; i++) {
+    const { px, py, w, spikeRight } = raw[i];
+    if (moverIdxs.has(i)) {
+      movers.push([px, py, w, H, moverColor, 'x', 55 + mn * 12, 88 + mn * 18, mn * 2.1]);
+      mn++;
+    } else {
+      plats.push([px, py, w, H, platColor]);
+      if (spikeEvery > 0 && i > 2 && (i % spikeEvery) === 0) {
+        spikes.push([spikeRight ? px + w - 16 : px, py - 14, 1]);
+      }
+    }
+  }
+
+  return { plats, spikes, movers };
+}
+
+const L1 = genLevel(1337, 2760, 160, '#5a2510', null,     0, 0);
+const L2 = genLevel(2674, 2760, 160, '#6a1a0a', null,     4, 0);
+const L3 = genLevel(4011, 2760, 160, '#7a1008', null,     3, 0);
+const L4 = genLevel(5348, 2760, 160, '#6a0a30', '#8a1a40', 4, 3);
+const L5 = genLevel(6685, 2760, 160, '#5a0050', '#8a00a0', 3, 5);
 
 const LEVELS = [
-  // ── Level 1: Slow Burn ─────────────────────────────────────────────────
-  // Easy zigzag, no spikes. Lava is gentle — 40 px/s.
+  // ── Level 1: Slow Burn ──────────────────────────────────────────────────
   {
     width: 800, height: 2800, bgColor: '#160500',
-    lavaSpeed: 40,
+    lavaSpeed: 55,
     spawnX: 360, spawnY: 2710,
     platforms: [
-      [0,   2760, 800, 40, '#3d1500'],
-      [80,  2610, 120, 18, '#5a2510'],
-      [420, 2460, 120, 18, '#5a2510'],
-      [80,  2310, 120, 18, '#5a2510'],
-      [420, 2160, 120, 18, '#5a2510'],
-      [80,  2010, 120, 18, '#5a2510'],
-      [420, 1860, 120, 18, '#5a2510'],
-      [80,  1710, 120, 18, '#5a2510'],
-      [420, 1560, 120, 18, '#5a2510'],
-      [80,  1410, 120, 18, '#5a2510'],
-      [420, 1260, 120, 18, '#5a2510'],
-      [80,  1110, 120, 18, '#5a2510'],
-      [420, 960,  120, 18, '#5a2510'],
-      [80,  810,  120, 18, '#5a2510'],
-      [420, 660,  120, 18, '#5a2510'],
-      [80,  510,  120, 18, '#5a2510'],
-      [420, 360,  120, 18, '#5a2510'],
-      [80,  240,  120, 18, '#5a2510'],
-      [0,   160,  800, 40, '#3d1500'],
+      [0, 2760, 800, 40, '#3d1500'],
+      ...L1.plats,
+      [0, 160, 800, 40, '#3d1500', true],
     ],
-    spikes: [],
+    spikes: L1.spikes,
     movingPlatforms: [],
     door: [375, 110],
   },
 
-  // ── Level 2: The Creep ─────────────────────────────────────────────────
-  // Slightly varied x positions, 5 spikes, lava at 58 px/s.
+  // ── Level 2: The Creep ──────────────────────────────────────────────────
   {
     width: 800, height: 2800, bgColor: '#100000',
-    lavaSpeed: 58,
+    lavaSpeed: 80,
     spawnX: 360, spawnY: 2710,
     platforms: [
-      [0,   2760, 800, 40, '#380a00'],
-      [90,  2610, 110, 18, '#6a1a0a'],
-      [430, 2460, 110, 18, '#6a1a0a'],  // spike here
-      [90,  2310, 110, 18, '#6a1a0a'],  // spike here
-      [430, 2160, 110, 18, '#6a1a0a'],
-      [90,  2010, 110, 18, '#6a1a0a'],  // spike here
-      [430, 1860, 110, 18, '#6a1a0a'],
-      [90,  1710, 110, 18, '#6a1a0a'],  // spike here
-      [430, 1560, 110, 18, '#6a1a0a'],
-      [90,  1410, 110, 18, '#6a1a0a'],
-      [430, 1260, 110, 18, '#6a1a0a'],  // spike here
-      [90,  1110, 110, 18, '#6a1a0a'],
-      [430, 960,  110, 18, '#6a1a0a'],
-      [90,  810,  110, 18, '#6a1a0a'],
-      [430, 660,  110, 18, '#6a1a0a'],
-      [90,  510,  110, 18, '#6a1a0a'],
-      [430, 360,  110, 18, '#6a1a0a'],
-      [90,  240,  110, 18, '#6a1a0a'],
-      [0,   160,  800, 40, '#380a00'],
+      [0, 2760, 800, 40, '#380a00'],
+      ...L2.plats,
+      [0, 160, 800, 40, '#380a00', true],
     ],
-    spikes: [
-      [477, 2446, 1],  // on (430,2460)
-      [137, 2296, 1],  // on (90,2310)
-      [137, 1996, 1],  // on (90,2010)
-      [137, 1696, 1],  // on (90,1710)
-      [477, 1246, 1],  // on (430,1260)
-    ],
+    spikes: L2.spikes,
     movingPlatforms: [],
     door: [375, 110],
   },
 
-  // ── Level 3: The Rush ──────────────────────────────────────────────────
-  // Three-zone path (L / C / R) requires diagonal jumps. 9 spikes. 80 px/s.
-  // Zones: L x=60 w=100, C x=290 w=100, R x=510 w=100
-  // L→C gap: 290-160=130px ✓  C→R gap: 510-390=120px ✓  L→R: 510-160=350px (needs C step)
+  // ── Level 3: The Rush ───────────────────────────────────────────────────
   {
     width: 800, height: 2800, bgColor: '#0a0000',
-    lavaSpeed: 80,
-    spawnX: 350, spawnY: 2710,
+    lavaSpeed: 110,
+    spawnX: 360, spawnY: 2710,
     platforms: [
-      [0,   2760, 800, 40, '#300800'],
-      // L→C→R→C→L→C→R pattern (diagonal climbs)
-      [290, 2620, 100, 18, '#7a1008'],  // C
-      [510, 2470, 100, 18, '#7a1008'],  // R spike
-      [290, 2320, 100, 18, '#7a1008'],  // C
-      [60,  2170, 100, 18, '#7a1008'],  // L spike
-      [290, 2020, 100, 18, '#7a1008'],  // C
-      [510, 1870, 100, 18, '#7a1008'],  // R spike
-      [290, 1720, 100, 18, '#7a1008'],  // C
-      [60,  1570, 100, 18, '#7a1008'],  // L spike
-      [290, 1420, 100, 18, '#7a1008'],  // C
-      [510, 1270, 100, 18, '#7a1008'],  // R spike
-      [290, 1120, 100, 18, '#7a1008'],  // C
-      [60,   970, 100, 18, '#7a1008'],  // L spike
-      [290,  820, 100, 18, '#7a1008'],  // C
-      [510,  670, 100, 18, '#7a1008'],  // R spike
-      [290,  520, 100, 18, '#7a1008'],  // C
-      [60,   370, 100, 18, '#7a1008'],  // L
-      [290,  240, 100, 18, '#7a1008'],  // C
-      [0,    160, 800, 40, '#300800'],
+      [0, 2760, 800, 40, '#300800'],
+      ...L3.plats,
+      [0, 160, 800, 40, '#300800', true],
     ],
-    spikes: [
-      [557, 2456, 1],  // on (510,2470)
-      [107, 2156, 1],  // on (60,2170)
-      [557, 1856, 1],  // on (510,1870)
-      [107, 1556, 1],  // on (60,1570)
-      [557, 1256, 1],  // on (510,1270)
-      [107,  956, 1],  // on (60,970)
-      [557,  656, 1],  // on (510,670)
-      [337, 1106, 1],  // on (290,1120)
-      [337,  506, 1],  // on (290,520)
-    ],
+    spikes: L3.spikes,
     movingPlatforms: [],
     door: [375, 110],
   },
 
-  // ── Level 4: The Blaze ────────────────────────────────────────────────
-  // Three static-platform sections split by moving platforms. 105 px/s.
-  // Moving platforms oscillate horizontally.
+  // ── Level 4: The Blaze ──────────────────────────────────────────────────
   {
     width: 800, height: 2800, bgColor: '#0e0010',
-    lavaSpeed: 105,
+    lavaSpeed: 145,
     spawnX: 360, spawnY: 2710,
     platforms: [
-      [0,   2760, 800, 40, '#280015'],
-      [80,  2610, 110, 18, '#6a0a30'],
-      [430, 2460, 110, 18, '#6a0a30'],  // spike
-      [80,  2310, 110, 18, '#6a0a30'],
-      // moving at y=2155
-      [430, 2010, 110, 18, '#6a0a30'],  // spike
-      [80,  1860, 110, 18, '#6a0a30'],
-      // moving at y=1705
-      [430, 1560, 110, 18, '#6a0a30'],  // spike
-      [80,  1410, 110, 18, '#6a0a30'],
-      // moving at y=1255
-      [430, 1110, 110, 18, '#6a0a30'],  // spike
-      [80,   960, 110, 18, '#6a0a30'],
-      [430,  810, 110, 18, '#6a0a30'],
-      [80,   660, 110, 18, '#6a0a30'],  // spike
-      [430,  510, 110, 18, '#6a0a30'],
-      [80,   360, 110, 18, '#6a0a30'],
-      [430,  240, 110, 18, '#6a0a30'],
-      [0,    160, 800, 40, '#280015'],
+      [0, 2760, 800, 40, '#280015'],
+      ...L4.plats,
+      [0, 160, 800, 40, '#280015', true],
     ],
-    movingPlatforms: [
-      // [x, y, w, h, color, axis, range, speed, phase]
-      [220, 2155, 110, 18, '#8a1a40', 'x', 100, 120, 0.0],
-      [240, 1705, 110, 18, '#8a1a40', 'x', 110, 130, 1.2],
-      [200, 1255, 110, 18, '#8a1a40', 'x',  95, 115, 2.1],
-    ],
-    spikes: [
-      [477, 2446, 1],  // on (430,2460)
-      [477, 1996, 1],  // on (430,2010)
-      [477, 1546, 1],  // on (430,1560)
-      [477, 1096, 1],  // on (430,1110)
-      [127,  646, 1],  // on (80,660)
-    ],
+    spikes: L4.spikes,
+    movingPlatforms: L4.movers,
     door: [375, 110],
   },
 
-  // ── Level 5: The Inferno ──────────────────────────────────────────────
-  // Mix of H and V moving platforms, dense spikes. 138 px/s.
+  // ── Level 5: The Inferno ────────────────────────────────────────────────
   {
     width: 800, height: 2800, bgColor: '#05000d',
-    lavaSpeed: 138,
+    lavaSpeed: 190,
     spawnX: 360, spawnY: 2710,
     platforms: [
-      [0,   2760, 800, 40, '#1a0025'],
-      [80,  2615, 100, 18, '#5a0050'],
-      [460, 2465, 100, 18, '#5a0050'],  // spike
-      // moving H at y=2310
-      [80,  2160, 100, 18, '#5a0050'],  // spike
-      // moving V at y=2005
-      [460, 1855, 100, 18, '#5a0050'],  // spike
-      [80,  1705, 100, 18, '#5a0050'],
-      // moving H at y=1550
-      [460, 1400, 100, 18, '#5a0050'],  // spike
-      [80,  1250, 100, 18, '#5a0050'],
-      // moving V at y=1095
-      [460,  945, 100, 18, '#5a0050'],  // spike
-      [80,   795, 100, 18, '#5a0050'],
-      // moving H at y=640
-      [460,  490, 100, 18, '#5a0050'],  // spike
-      [80,   355, 100, 18, '#5a0050'],  // spike
-      [460,  240, 100, 18, '#5a0050'],
-      [0,    160, 800, 40, '#1a0025'],
+      [0, 2760, 800, 40, '#1a0025'],
+      ...L5.plats,
+      [0, 160, 800, 40, '#1a0025', true],
     ],
-    movingPlatforms: [
-      [220, 2310, 100, 18, '#8a00a0', 'x', 110, 140, 0.0],
-      [280, 2005, 100, 18, '#8a00a0', 'y',  60,  80, 0.7],
-      [220, 1550, 100, 18, '#8a00a0', 'x', 120, 145, 1.5],
-      [280, 1095, 100, 18, '#8a00a0', 'y',  65,  85, 2.3],
-      [220,  640, 100, 18, '#8a00a0', 'x', 115, 140, 0.9],
-    ],
-    spikes: [
-      [507, 2451, 1],  // on (460,2465)
-      [127, 2146, 1],  // on (80,2160)
-      [507, 1841, 1],  // on (460,1855)
-      [507, 1386, 1],  // on (460,1400)
-      [507,  931, 1],  // on (460,945)
-      [507,  476, 1],  // on (460,490)
-      [127,  341, 1],  // on (80,355)
-    ],
+    spikes: L5.spikes,
+    movingPlatforms: L5.movers,
     door: [375, 110],
   },
 ];

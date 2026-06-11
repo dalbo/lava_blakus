@@ -1,11 +1,11 @@
 class Lava {
   constructor(levelHeight) {
     this.levelHeight = levelHeight;
-    this.y = levelHeight; // starts below the level
+    this.y = levelHeight + 800;
   }
 
   reset() {
-    this.y = this.levelHeight;
+    this.y = this.levelHeight + 800;
   }
 
   update(dt, speed) {

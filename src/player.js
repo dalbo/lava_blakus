@@ -63,6 +63,7 @@ class Player {
 
   _resolveX(platforms) {
     for (const p of platforms) {
+      if (p.oneWay) continue;
       if (!this._overlaps(p)) continue;
       if (this.vx > 0) this.x = p.x - this.width;
       else if (this.vx < 0) this.x = p.x + p.width;
@@ -74,13 +75,15 @@ class Player {
     for (const p of platforms) {
       if (!this._overlaps(p)) continue;
       if (this.vy >= 0) {
+        if (p.oneWay && this.y >= p.y) continue; // player came from below
         this.y = p.y - this.height;
         this.onGround = true;
         this._ridingPlatform = p;
-      } else {
+        this.vy = 0;
+      } else if (!p.oneWay) {
         this.y = p.y + p.height;
+        this.vy = 0;
       }
-      this.vy = 0;
     }
   }
 
